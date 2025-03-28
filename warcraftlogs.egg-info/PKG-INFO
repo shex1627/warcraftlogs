@@ -1,0 +1,16 @@
+Metadata-Version: 2.1
+Name: warcraftlogs
+Version: 0.1.0
+Summary: Python client for the Warcraft Logs API
+Author: Your Name
+Author-email: shicheng1627@gmail.com
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Requires-Python: >=3.7
+Requires-Dist: requests>=2.25.0

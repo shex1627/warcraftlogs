@@ -1,0 +1,12 @@
+setup.py
+warcraftlogs/__init__.py
+warcraftlogs/api.py
+warcraftlogs/auth.py
+warcraftlogs/client.py
+warcraftlogs/token_manager.py
+warcraftlogs/utils.py
+warcraftlogs.egg-info/PKG-INFO
+warcraftlogs.egg-info/SOURCES.txt
+warcraftlogs.egg-info/dependency_links.txt
+warcraftlogs.egg-info/requires.txt
+warcraftlogs.egg-info/top_level.txt
