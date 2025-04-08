@@ -1,6 +1,8 @@
 import pandas as pd
 from tqdm import tqdm
 from typing import Dict, List
+import traceback
+import json
 from warcraftlogs.client import WarcraftLogsClient
 from warcraftlogs.ability_data_manager import AbilityDataManager
 
@@ -162,3 +164,45 @@ def augment_events_df(cast_info_df: pd.DataFrame, id_to_name_dict: Dict={},
         )
 
     return cast_info_df
+
+def get_buff_info_df(buff_info: list):
+    try:
+        total_time = buff_info['totalTime']    
+        buff_info_df = pd.DataFrame(buff_info['auras'])
+        buff_info_df['total_time'] = total_time
+        buff_info_df['up_time_pct'] = buff_info_df['totalUptime'] / total_time
+        # round up_time_pct to 2 decimal places
+        buff_info_df['up_time_pct'] = buff_info_df['up_time_pct'].round(2)
+        # put ['name', 'up_time_pct'] in the first two columns and keep the rest of the columns in the same order
+        buff_info_df = buff_info_df[['name', 'up_time_pct'] + [col for col in buff_info_df.columns if col not in ['name', 'up_time_pct']]]
+        return buff_info_df
+    except Exception as e:
+        traceback.print_exc()
+        print(f"Error in get_buff_info_df: {e}")
+        return pd.DataFrame()
+
+def get_damage_info_df(damage_data: dict):
+    try:
+        damage_total_time = damage_data['totalTime']
+        damage_info_df = pd.DataFrame(damage_data['entries'])
+        damage_info_df['dps'] = (damage_info_df['total']/damage_total_time*1000).round(0)
+        if 'critHitCount' in damage_info_df.columns:
+            damage_info_df['crit_pct'] = (damage_info_df['critHitCount']/damage_info_df['hitCount']).round(2)*100
+
+        damage_info_df['hit_per_minute'] = (damage_info_df['hitCount']/damage_total_time*1000*60).round(2)
+        return damage_info_df
+    except KeyError:
+        print("KeyError: 'totalTime' not found in damage_data")
+        return pd.DataFrame()
+    
+def get_cast_info_df(cast_data_resp):
+    try:
+        cast_data_df = pd.DataFrame(cast_data_resp['entries'])
+        total_time = cast_data_resp['totalTime']
+        cast_data_df['total_time'] = total_time
+        cast_data_df['cast_per_minute'] = cast_data_df['total'] / (total_time / 1000 / 60)
+        return cast_data_df
+    except KeyError:
+        print("KeyError: 'totalTime' not found in cast_data_resp")
+        return pd.DataFrame()
+    
