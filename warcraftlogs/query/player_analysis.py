@@ -61,7 +61,7 @@ def get_player_details(client, report_code: str, fight_id: int, source_id: int=N
     player_details = response['data']['reportData']['report']['playerDetails']
     
     if source_id is None:
-        return player_details
+        return player_details['data']['playerDetails']
     
     # Find the player in the response
     for role, players_in_role in player_details['data']['playerDetails'].items():
@@ -121,7 +121,6 @@ def get_fight_info(client, report_code: str, fight_id: int) -> Dict:
     """
     
     response = client.query_public_api(query)
-    print(query)
     return response['data']['reportData']['report'] #['fights'][0]
 
 def get_similar_players(client, encounter_id: int, spec_id: int, bracket: int, 

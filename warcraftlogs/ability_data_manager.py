@@ -5,6 +5,8 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Optional
 import pandas as pd
 from tqdm.notebook import tqdm
+import requests
+from bs4 import BeautifulSoup
 
 class AbilityDataManager:
     def __init__(self, client, cache_file: str = "ability_cache.json", max_workers: int = 5, batch_size: int = 50):
@@ -41,7 +43,8 @@ class AbilityDataManager:
             json.dump(self.ability_cache, f)
 
     def _query_single_ability(self, ability_id: int) -> Dict:
-        """Query a single ability from the API"""
+        """Query a single ability from the API and WoWHead"""
+        # First query WarcraftLogs API
         query = {
             "query": """
             {
@@ -56,13 +59,43 @@ class AbilityDataManager:
             """ % ability_id
         }
         
+        ability_data = {}
+        
+        # Get API data
         response = self.client.query_public_api(**query)
-        if response.get('data', {}).get('gameData', {}).get('ability'):
-            return response['data']['gameData']['ability']
+        api_data = response.get('data', {}).get('gameData', {}).get('ability')
+        if api_data:
+            ability_data.update(api_data)
+        
+        # Get WoWHead tooltip data
+        try:
+            spell_url = f"https://www.wowhead.com/spell={ability_id}"
+            response = requests.get(spell_url)
+            
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.content, 'html.parser')
+                
+                # Get tooltip description
+                spell_links = soup.find_all(attrs={'class': 'q'})
+                if spell_links:
+                    ability_data['description'] = spell_links[0].text.strip()
+                
+                # # Update name if not found from API
+                # if not ability_data.get('name'):
+                #     title_elem = soup.find('h1', {'class': 'heading-size-1'})
+                #     if title_elem:
+                #         ability_data['name'] = title_elem.text.strip()
+                    
+        except Exception as e:
+            print(f"Error fetching WoWHead data for ability {ability_id}: {e}")
+        
+        if ability_data:
+            ability_data['id'] = str(ability_id)  # Ensure ID is string for JSON
+            return ability_data
         return None
 
     def _query_ability_batch(self, ability_ids: List[int]) -> Dict[int, Dict]:
-        """Query a batch of abilities and return results"""
+        """Query a batch of abilities and return results with tooltips"""
         results = {}
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             futures = {executor.submit(self._query_single_ability, aid): aid 

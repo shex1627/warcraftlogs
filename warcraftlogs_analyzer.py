@@ -19,8 +19,8 @@ from warcraftlogs.query.events import get_buff_info_df, get_damage_info_df, get_
 from warcraftlogs.analytics.compare import compare_damage_info, compare_buff_uptime, compare_cast_info
 
 # Constants
-SIMILAR_PLAYERS_COUNT = 10
-ANALYSIS_PLAYERS_COUNT = 5
+SIMILAR_PLAYERS_COUNT = 15
+ANALYSIS_PLAYERS_COUNT = 10
 DPS_DIFF_THRESHOLD = 10000
 CAST_PER_MINUTE_DIFF_THRESHOLD = 2
 BUFF_UPTIME_DIFF_THRESHOLD = 0.1
@@ -260,9 +260,9 @@ def perform_analysis(client, ability_data_manager, url, selected_player, source_
         cast_analyzer_df_records.append({
             'name': name,
             'guid': guid,
-            'base_player_cast_per_minute': ability_df['cast_per_minute_1'].mean().round(1),
-            'compare_player_cast_per_minute': ability_df['cast_per_minute_2'].mean().round(1),
-            'cast_per_minute_diff': ability_df['cast_per_minute_diff'].mean().round(1),
+            'base_player_cast_per_minute': round(ability_df['cast_per_minute_1'].mean(), 1),
+            'compare_player_cast_per_minute': round(ability_df['cast_per_minute_2'].mean(), 1),
+            'cast_per_minute_diff': round(ability_df['cast_per_minute_diff'].mean(), 1),
             'datapoints': len(ability_df)
         })
     
@@ -284,9 +284,9 @@ def perform_analysis(client, ability_data_manager, url, selected_player, source_
         buff_analyzer_df_records.append({
             'name': name,
             'guid': guid,
-            'base_player_buff_uptime': ability_df['up_time_pct_1'].mean().round(1),
-            'compare_player_buff_uptime': ability_df['up_time_pct_2'].mean().round(1),
-            'buff_uptime_diff': ability_df['up_time_pct_diff'].mean().round(1),
+            'base_player_buff_uptime': round(ability_df['up_time_pct_1'].mean(), 1),
+            'compare_player_buff_uptime': round(ability_df['up_time_pct_2'].mean(), 1),
+            'buff_uptime_diff': round(ability_df['up_time_pct_diff'].mean(), 1),
             'datapoints': len(ability_df)
         })
     
@@ -308,12 +308,12 @@ def perform_analysis(client, ability_data_manager, url, selected_player, source_
         damage_analyzer_df_records.append({
             'name': name,
             'guid': guid,
-            'base_player_dps': ability_df['dps_1'].mean().round(1),
-            'compare_player_dps': ability_df['dps_2'].mean().round(1),
-            'base_player_hit_per_minute': ability_df['hit_per_minute_1'].mean().round(1),
-            'compare_player_hit_per_minute': ability_df['hit_per_minute_2'].mean().round(1),
-            'dps_diff': ability_df['dps_diff'].mean().round(1),
-            'hit_per_minute_diff': ability_df['hit_per_minute_diff'].mean().round(1),
+            'base_player_dps': round(ability_df['dps_1'].mean(), 1),
+            'compare_player_dps': round(ability_df['dps_2'].mean(), 1),
+            'base_player_hit_per_minute': round(ability_df['hit_per_minute_1'].mean(), 1),
+            'compare_player_hit_per_minute': round(ability_df['hit_per_minute_2'].mean(), 1),
+            'dps_diff': round(ability_df['dps_diff'].mean(), 1),
+            'hit_per_minute_diff': round(ability_df['hit_per_minute_diff'].mean(), 1),
             'datapoints': len(ability_df)
         })
     
@@ -323,7 +323,8 @@ def perform_analysis(client, ability_data_manager, url, selected_player, source_
         'damage_analyzer_df': damage_analyzer_df,
         'cast_analyzer_df': cast_analyzer_df,
         'buff_analyzer_df': buff_analyzer_df,
-        'timestamp': datetime.now().isoformat()
+        'timestamp': datetime.now().isoformat(),
+        'similar_player_report_info': similar_player_report_info
     }
 
 def display_analysis_results(results):
@@ -333,17 +334,52 @@ def display_analysis_results(results):
     
     st.subheader("Analysis Results")
     
+    # Reorder columns for damage analysis
+    damage_cols = ['name', 'dps_diff', 'hit_per_minute_diff'] + [
+        col for col in results['damage_analyzer_df'].columns 
+        if col not in ['name', 'dps_diff', 'hit_per_minute_diff']
+    ]
+    #remove guid column
+    damage_cols = [col for col in damage_cols if col != 'guid']
     st.write("### Damage Analysis")
-    st.dataframe(results['damage_analyzer_df'].style.background_gradient(
-        cmap='autumn', subset=['dps_diff','hit_per_minute_diff']))
+    st.dataframe(
+        results['damage_analyzer_df'][damage_cols].style.background_gradient(
+            cmap='autumn', subset=['dps_diff','hit_per_minute_diff']
+        ),
+        use_container_width=True,
+        hide_index=True
+    )
     
+    # Reorder columns for cast analysis
+    cast_cols = ['name', 'cast_per_minute_diff'] + [
+        col for col in results['cast_analyzer_df'].columns 
+        if col not in ['name', 'cast_per_minute_diff']
+    ]
+    #remove guid column
+    cast_cols = [col for col in cast_cols if col != 'guid']
     st.write("### Cast Analysis")
-    st.dataframe(results['cast_analyzer_df'].round(1).style.background_gradient(
-        cmap='autumn', subset=['cast_per_minute_diff']))
+    st.dataframe(
+        results['cast_analyzer_df'][cast_cols].round(1).style.background_gradient(
+            cmap='autumn', subset=['cast_per_minute_diff']
+        ),
+        use_container_width=True,
+        hide_index=True
+    )
     
+    # Reorder columns for buff analysis
+    buff_cols = ['name', 'buff_uptime_diff'] + [
+        col for col in results['buff_analyzer_df'].columns 
+        if col not in ['name', 'buff_uptime_diff']
+    ]
+    #remove guid column
+    buff_cols = [col for col in buff_cols if col != 'guid']
     st.write("### Buff Uptime Analysis")
-    st.dataframe(results['buff_analyzer_df'].sort_values('buff_uptime_diff', ascending=True)
-        .style.background_gradient(cmap='autumn', subset=['buff_uptime_diff']))
+    st.dataframe(
+        results['buff_analyzer_df'][buff_cols].sort_values('buff_uptime_diff', ascending=True)
+            .style.background_gradient(cmap='autumn', subset=['buff_uptime_diff']),
+        use_container_width=True,
+        hide_index=True
+    )
 
 def main():
     st.title("WarcraftLogs Player Analyzer")
@@ -359,18 +395,18 @@ def main():
     logger = AnalysisLogger(ANALYSIS_LOG_FILE)
     
     # Display recent analyses
-    recent_analyses = logger.get_recent_analyses()
-    if recent_analyses:
-        with st.expander("Recent Analyses"):
-            for analysis in recent_analyses:
-                st.write(f"Player: {analysis['player']} - {analysis['timestamp']}")
-                if st.button(f"Load {analysis['player']}'s analysis", key=analysis['timestamp']):
-                    st.session_state.current_url = analysis['url']
+    # recent_analyses = logger.get_recent_analyses()
+    # if recent_analyses:
+    #     with st.expander("Recent Analyses"):
+    #         for analysis in recent_analyses:
+    #             st.write(f"Player: {analysis['player']} - {analysis['timestamp']}")
+    #             if st.button(f"Load {analysis['player']}'s analysis", key=analysis['timestamp']):
+    #                 st.session_state.current_url = analysis['url']
                     
     # URL input
     url = st.text_input(
         "Enter WarcraftLogs URL (with fight ID):",
-        value=st.session_state.current_url or "https://www.warcraftlogs.com/reports/vWLfFkZ71V3tQAnb?fight=28&type=summary"
+        value=st.session_state.current_url
     )
     
     if url != st.session_state.current_url:
@@ -438,7 +474,7 @@ def main():
         
         # Display results
         display_analysis_results(st.session_state.analysis_results)
-        
+
         # LLM Insights
         if st.button("Generate Insights"):
             api_key = os.environ.get("OPENAI_API_KEY", "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")
@@ -463,7 +499,18 @@ def main():
                     st.error(f"Error generating insights: {str(e)}")
             else:
                 st.warning("Please enter an OpenAI API key to generate insights.")
-    
+
+
+        # top player references as hyperlinks
+        st.write("### Top Player References")
+        # generate warcraftlogs url for top players, 
+        # like https://www.warcraftlogs.com/reports/6Qy7Tp91KaCJWMFB?fight=15&type=damage-done&source=110
+        top_player_urls = []
+        for report_info in st.session_state.analysis_results['similar_player_report_info'][:ANALYSIS_PLAYERS_COUNT]:
+            top_player_urls.append(f"https://www.warcraftlogs.com/reports/{report_info['report_code']}?fight={report_info['fight_id']}&type=damage-done&source={report_info['player_source_id']}")
+        for url in top_player_urls:
+            st.write(f"[{url}]({url})")
+            
     except Exception as e:
         trace_info = st.expander("Traceback", expanded=False)
         with trace_info:
