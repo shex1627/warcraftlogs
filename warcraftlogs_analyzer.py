@@ -19,10 +19,10 @@ from warcraftlogs.query.events import get_buff_info_df, get_damage_info_df, get_
 from warcraftlogs.analytics.compare import compare_damage_info, compare_buff_uptime, compare_cast_info
 
 # Constants
-SIMILAR_PLAYERS_COUNT = 15
-ANALYSIS_PLAYERS_COUNT = 10
+SIMILAR_PLAYERS_COUNT = 10
+ANALYSIS_PLAYERS_COUNT = 5
 DPS_DIFF_THRESHOLD = 10000
-CAST_PER_MINUTE_DIFF_THRESHOLD = 2
+CAST_PER_MINUTE_DIFF_THRESHOLD = 1
 BUFF_UPTIME_DIFF_THRESHOLD = 0.1
 MIN_DATAPOINTS = 2
 ANALYSIS_LOG_FILE = "analysis_logs.jsonl"
@@ -62,17 +62,28 @@ def get_ability_data_manager(_client):
     return AbilityDataManager(client=_client, cache_file="../data/ability_data_cache.json")
 
 def extract_report_info(url):
-    """Extract report code, fight ID, and source ID from WarcraftLogs URL"""
+    """Extract report code, fight ID, and source ID from WarcraftLogs URL
+    
+    Args:
+        url (str): WarcraftLogs URL
+        
+    Returns:
+        tuple: (report_code, fight_id, source_id) where:
+            - report_code (str): The report code from URL
+            - fight_id (int|str): Fight ID as integer, or "last" for last fight
+            - source_id (int|None): Source ID if present, else None
+    """
     try:
         report_code = re.search(r'/reports/(\w+)', url)
         if not report_code:
             return None, None, None
         report_code = report_code.group(1)
         
-        fight_id = re.search(r'fight=(\d+)', url)
+        fight_id = re.search(r'fight=(\d+|last)', url)
         if not fight_id:
             return report_code, None, None
-        fight_id = int(fight_id.group(1))
+        fight_id_value = fight_id.group(1)
+        fight_id = int(fight_id_value) if fight_id_value.isdigit() else "last"
         
         source_id = re.search(r'source=(\d+)', url)
         source_id = int(source_id.group(1)) if source_id else None
@@ -416,7 +427,15 @@ def main():
         st.session_state.analysis_results = None
     
     report_code, fight_id, _ = extract_report_info(url)
-    
+    if fight_id == "last":
+        from warcraftlogs.query.reports import get_last_fight_id
+        fight_id = get_last_fight_id(client, report_code=report_code)
+
+    if not url:
+        st.text("Please enter a WarcraftLogs raid URL with fight ID.")
+        return 
+
+
     if not report_code or not fight_id:
         st.error("Invalid URL. Please enter a valid WarcraftLogs URL with a fight ID.")
         return
@@ -438,78 +457,73 @@ def main():
                 
                 st.session_state.player_details_df = player_details_df
         
-        # Player selection
-        player_options = st.session_state.player_details_df['player_tooltip'].tolist()
-        selected_player = st.selectbox(
-            "Select player to analyze:",
-            player_options,
-            index=player_options.index(st.session_state.current_player) if st.session_state.current_player in player_options else 0
-        )
-        
-        if selected_player != st.session_state.current_player:
-            st.session_state.current_player = selected_player
-            st.session_state.analysis_results = None
-        
-        # Get selected player ID
-        selected_player_name = selected_player.split('-')[0]
-        source_id = st.session_state.player_details_df[
-            st.session_state.player_details_df['name'] == selected_player_name
-        ]['id'].values[0]
-        
-        if st.button("Analyze Player") or st.session_state.analysis_results is None:
-            with st.spinner("Analyzing player performance..."):
-                # Perform analysis
-                results = perform_analysis(client, ability_data_manager, url, selected_player, source_id)
-                
-                # Log the analysis
-                logger.log_analysis(
-                    st.session_state.session_id,
-                    url,
-                    selected_player,
-                    results['timestamp']
-                )
-                
-                # Store results in session state
-                st.session_state.analysis_results = results
-        
-        # Display results
-        display_analysis_results(st.session_state.analysis_results)
-
-        # LLM Insights
-        if st.button("Generate Insights"):
-            api_key = os.environ.get("OPENAI_API_KEY", "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")
+        if st.session_state.player_details_df is not None:
+            player_options = st.session_state.player_details_df['player_tooltip'].tolist()
+            selected_player = st.selectbox(
+                "Select player to analyze:",
+                player_options,
+                index=player_options.index(st.session_state.current_player) if st.session_state.current_player in player_options else 0
+            )
             
-            if api_key:
-                try:
-                    from askharrison.llm.openai_llm_client import OpenAIClient
-                    openai_client = OpenAIClient(api_key=api_key)
+            if selected_player != st.session_state.current_player:
+                st.session_state.current_player = selected_player
+            
+            selected_player_name = selected_player.split('-')[0]
+            source_id = st.session_state.player_details_df[
+                st.session_state.player_details_df['name'] == selected_player_name
+            ]['id'].values[0]
+            
+            # Only analyze when button is clicked
+            if st.button("Analyze Player"):
+                with st.spinner("Analyzing player performance..."):
+                    results = perform_analysis(client, ability_data_manager, url, selected_player, source_id)
+                    logger.log_analysis(
+                        st.session_state.session_id,
+                        url,
+                        selected_player,
+                        results['timestamp']
+                    )
+                    st.session_state.analysis_results = results
+        
+            # Display results if they exist
+            if st.session_state.analysis_results:
+                display_analysis_results(st.session_state.analysis_results)
+
+                # LLM Insights
+                if st.button("Generate Insights"):
+                    api_key = os.environ.get("OPENAI_API_KEY")
                     
-                    with st.spinner("Generating insights..."):
-                        insights_prompt = generate_insights_prompt(
-                            st.session_state.analysis_results['cast_analyzer_df'],
-                            st.session_state.analysis_results['damage_analyzer_df'],
-                            st.session_state.analysis_results['buff_analyzer_df'],
-                            ability_data_manager
-                        )
-                        insights = openai_client.generate(insights_prompt)
-                        
-                        st.write("### AI Insights")
-                        st.markdown(insights)
-                except Exception as e:
-                    st.error(f"Error generating insights: {str(e)}")
-            else:
-                st.warning("Please enter an OpenAI API key to generate insights.")
+                    if api_key:
+                        try:
+                            from askharrison.llm.openai_llm_client import OpenAIClient
+                            openai_client = OpenAIClient(api_key=api_key)
+                            
+                            with st.spinner("Generating insights..."):
+                                insights_prompt = generate_insights_prompt(
+                                    st.session_state.analysis_results['cast_analyzer_df'],
+                                    st.session_state.analysis_results['damage_analyzer_df'],
+                                    st.session_state.analysis_results['buff_analyzer_df'],
+                                    ability_data_manager
+                                )
+                                insights = openai_client.generate(insights_prompt)
+                                
+                                st.write("### AI Insights")
+                                st.markdown(insights)
+                        except Exception as e:
+                            st.error(f"Error generating insights: {str(e)}")
+                    else:
+                        st.warning("Please enter an OpenAI API key to generate insights.")
 
 
-        # top player references as hyperlinks
-        st.write("### Top Player References")
-        # generate warcraftlogs url for top players, 
-        # like https://www.warcraftlogs.com/reports/6Qy7Tp91KaCJWMFB?fight=15&type=damage-done&source=110
-        top_player_urls = []
-        for report_info in st.session_state.analysis_results['similar_player_report_info'][:ANALYSIS_PLAYERS_COUNT]:
-            top_player_urls.append(f"https://www.warcraftlogs.com/reports/{report_info['report_code']}?fight={report_info['fight_id']}&type=damage-done&source={report_info['player_source_id']}")
-        for url in top_player_urls:
-            st.write(f"[{url}]({url})")
+                # top player references as hyperlinks
+                st.write("### Top Player References")
+                # generate warcraftlogs url for top players, 
+                # like https://www.warcraftlogs.com/reports/6Qy7Tp91KaCJWMFB?fight=15&type=damage-done&source=110
+                top_player_urls = []
+                for report_info in st.session_state.analysis_results['similar_player_report_info'][:ANALYSIS_PLAYERS_COUNT]:
+                    top_player_urls.append(f"https://www.warcraftlogs.com/reports/{report_info['report_code']}?fight={report_info['fight_id']}&type=damage-done&source={report_info['player_source_id']}")
+                for url in top_player_urls:
+                    st.write(f"[{url}]({url})")
             
     except Exception as e:
         trace_info = st.expander("Traceback", expanded=False)
