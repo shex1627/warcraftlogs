@@ -62,6 +62,17 @@ def compare_damage_info(damage_info_df1: pd.DataFrame, damage_info_df2: pd.DataF
     merged_df['abs_hit_per_minute_diff'] = merged_df['hit_per_minute_diff'].abs()
     return merged_df
 
+def compare_metric_info(metric_info_df1: pd.DataFrame, metric_info_df2: pd.DataFrame, metric_type: str='dps'):
+    metric_info_df1 = metric_info_df1[['name', metric_type, 'hit_per_minute', 'guid']]
+    metric_info_df2 = metric_info_df2[['name', metric_type, 'hit_per_minute', 'guid']]
+    merged_df = metric_info_df1.merge(metric_info_df2, on=['name', 'guid'], suffixes=('_1', '_2'), how=
+                               'inner')
+    merged_df[f'{metric_type}_diff'] = merged_df[f'{metric_type}_1'] - merged_df[f'{metric_type}_2']
+    merged_df['hit_per_minute_diff'] = merged_df['hit_per_minute_1'] - merged_df['hit_per_minute_2']
+    merged_df[f'abs_{metric_type}_diff'] = merged_df[f'{metric_type}_diff'].abs()
+    merged_df['abs_hit_per_minute_diff'] = merged_df['hit_per_minute_diff'].abs()
+    return merged_df
+
 def compare_buff_uptime(buff_info_df1: pd.DataFrame, buff_info_df2: pd.DataFrame):
     buff_info_df1 = buff_info_df1[['name', 'up_time_pct', 'totalUses', 'type', 'guid']]
     buff_info_df2 = buff_info_df2[['name', 'up_time_pct', 'totalUses', 'type', 'guid']]

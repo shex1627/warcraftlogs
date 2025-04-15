@@ -55,12 +55,13 @@ def generate_ranking_query(**kwargs):
     """
     return query
 
-def generate_ranking_query_from_player_and_fight(player: PlayerDetails, fight: dict):
+def generate_ranking_query_from_player_and_fight(player: PlayerDetails, fight: dict, metric_type: str):
     filters = {
         "bracket": player.bracket,
         "className": f'"{player.class_name}"',
         "specName": f'"{player.spec_name}"',
-        "difficulty": fight['difficulty']
+        "difficulty": fight['difficulty'],
+        "metric": metric_type
     }
     query_generated = generate_ranking_query(**filters)
     variables = {

@@ -15,12 +15,12 @@ from warcraftlogs.ability_data_manager import AbilityDataManager
 from warcraftlogs.query.player_analysis import get_player_details, get_fight_info
 from warcraftlogs.query.ranking import generate_ranking_query_from_player_and_fight
 from warcraftlogs.query.tables import get_table_data
-from warcraftlogs.query.events import get_buff_info_df, get_damage_info_df, get_cast_info_df
-from warcraftlogs.analytics.compare import compare_damage_info, compare_buff_uptime, compare_cast_info
-
+from warcraftlogs.query.events import get_buff_info_df, get_damage_info_df, get_cast_info_df, get_metric_info_df
+from warcraftlogs.analytics.compare import compare_damage_info, compare_buff_uptime, compare_cast_info, compare_metric_info
+from warcraftlogs.query.metrics import Role, get_data_type_for_role, get_primary_metric_for_role
 # Constants
 SIMILAR_PLAYERS_COUNT = 10
-ANALYSIS_PLAYERS_COUNT = 5
+ANALYSIS_PLAYERS_COUNT = 10
 DPS_DIFF_THRESHOLD = 10000
 CAST_PER_MINUTE_DIFF_THRESHOLD = 1
 BUFF_UPTIME_DIFF_THRESHOLD = 0.1
@@ -172,11 +172,15 @@ def perform_analysis(client, ability_data_manager, url, selected_player, source_
     
     # Get player details and fight info
     player = get_player_details(client, report_code=uploaded_report_code, fight_id=uploaded_fight_id, source_id=source_id)
+    print(f"player: {player}")
+    data_type = get_data_type_for_role(player.role).value
+    metric_type = get_primary_metric_for_role(player.role).value
     fight = get_fight_info(client, report_code=uploaded_report_code, fight_id=uploaded_fight_id)
     print(f"analyzing player {player}")
     
     # Get similar player rankings
-    query, variables = generate_ranking_query_from_player_and_fight(player, fight['fights'][0])
+    query, variables = generate_ranking_query_from_player_and_fight(player, fight['fights'][0], metric_type)
+    print(f"query to get similar players: {query}")
     ranking_resp = client.query_public_api(query, variables)
     similar_player_rankings = ranking_resp['data']['worldData']['encounter']['characterRankings']['rankings']
     print(f"Found {len(similar_player_rankings)} similar players")
@@ -203,9 +207,11 @@ def perform_analysis(client, ability_data_manager, url, selected_player, source_
     player_buff_info_df = get_buff_info_df(buff_table_data_resp['data']['reportData']['report']['table']['data'])
     #print(f"{player_buff_info_df.to_markdown()}")
     
-    damage_done_table_data_query = get_table_data(uploaded_report_code, uploaded_fight_id, source_id, data_type="DamageDone")
+    # if player is a healer, then use the heal data
+    damage_done_table_data_query = get_table_data(uploaded_report_code, uploaded_fight_id, source_id, data_type=data_type)
     damage_done_table_data_resp = client.query_public_api(damage_done_table_data_query)
-    player_damage_info_df = get_damage_info_df(damage_done_table_data_resp['data']['reportData']['report']['table']['data'])
+    player_damage_info_df = get_metric_info_df(damage_done_table_data_resp['data']['reportData']['report']['table']['data'],
+                                               metric_type=metric_type)
     #print(f"{player_damage_info_df.to_markdown()}")
     
     cast_data_query = get_table_data(uploaded_report_code, uploaded_fight_id, source_id, data_type="Casts")
@@ -231,7 +237,7 @@ def perform_analysis(client, ability_data_manager, url, selected_player, source_
         
         # Get damage data
         damage_done_table_data_query = get_table_data(report_info['report_code'], report_info['fight_id'], 
-                                                    report_info['player_source_id'], data_type="DamageDone")
+                                                    report_info['player_source_id'], data_type=data_type)
         damage_done_table_data_resp = client.query_public_api(damage_done_table_data_query)
         top_player_dmg_info_lst.append(damage_done_table_data_resp['data']['reportData']['report']['table']['data'])
         
@@ -243,7 +249,7 @@ def perform_analysis(client, ability_data_manager, url, selected_player, source_
     
     # Process data
     top_player_buff_info_lst_clean = list(map(get_buff_info_df, top_player_buff_info_lst))
-    top_player_damage_info_lst_clean = list(map(get_damage_info_df, top_player_dmg_info_lst))
+    top_player_damage_info_lst_clean = list(map(lambda x: get_metric_info_df(x, metric_type=metric_type), top_player_dmg_info_lst))
     top_player_cast_info_lst_clean = list(map(get_cast_info_df, top_player_cast_info_lst))
     
     # Remove empty dataframes
@@ -306,8 +312,8 @@ def perform_analysis(client, ability_data_manager, url, selected_player, source_
     # Analyze damage differences
     damage_done_diff_dict = defaultdict(list)
     for i in range(len(top_player_damage_info_lst_clean)):
-        compare_df = compare_damage_info(player_damage_info_df, top_player_damage_info_lst_clean[i])
-        compare_df = compare_df.query(f"abs_dps_diff > {DPS_DIFF_THRESHOLD}")
+        compare_df = compare_metric_info(player_damage_info_df, top_player_damage_info_lst_clean[i], metric_type=metric_type)
+        compare_df = compare_df.query(f"abs_{metric_type}_diff > {DPS_DIFF_THRESHOLD}")
         for index, row in compare_df.iterrows():
             key = (row['name'], row['guid']) 
             damage_done_diff_dict[key].append(row)
@@ -319,26 +325,27 @@ def perform_analysis(client, ability_data_manager, url, selected_player, source_
         damage_analyzer_df_records.append({
             'name': name,
             'guid': guid,
-            'base_player_dps': round(ability_df['dps_1'].mean(), 1),
-            'compare_player_dps': round(ability_df['dps_2'].mean(), 1),
+            f'base_player_{metric_type}': round(ability_df[f'{metric_type}_1'].mean(), 1),
+            f'compare_player_{metric_type}': round(ability_df[f'{metric_type}_2'].mean(), 1),
             'base_player_hit_per_minute': round(ability_df['hit_per_minute_1'].mean(), 1),
             'compare_player_hit_per_minute': round(ability_df['hit_per_minute_2'].mean(), 1),
-            'dps_diff': round(ability_df['dps_diff'].mean(), 1),
+            f'{metric_type}_diff': round(ability_df[f'{metric_type}_diff'].mean(), 1),
             'hit_per_minute_diff': round(ability_df['hit_per_minute_diff'].mean(), 1),
             'datapoints': len(ability_df)
         })
     
-    damage_analyzer_df = pd.DataFrame(damage_analyzer_df_records).query(f"datapoints > {MIN_DATAPOINTS}").sort_values('dps_diff', ascending=True)
+    damage_analyzer_df = pd.DataFrame(damage_analyzer_df_records).query(f"datapoints > {MIN_DATAPOINTS}").sort_values(f'{metric_type}_diff', ascending=True)
     
     return {
         'damage_analyzer_df': damage_analyzer_df,
         'cast_analyzer_df': cast_analyzer_df,
         'buff_analyzer_df': buff_analyzer_df,
         'timestamp': datetime.now().isoformat(),
-        'similar_player_report_info': similar_player_report_info
+        'similar_player_report_info': similar_player_report_info,
+        'metric_type': metric_type
     }
 
-def display_analysis_results(results):
+def display_analysis_results(results, metric_type):
     """Display the analysis results"""
     if not results:
         return
@@ -346,16 +353,16 @@ def display_analysis_results(results):
     st.subheader("Analysis Results")
     
     # Reorder columns for damage analysis
-    damage_cols = ['name', 'dps_diff', 'hit_per_minute_diff'] + [
+    damage_cols = ['name', f'{metric_type}_diff', 'hit_per_minute_diff'] + [
         col for col in results['damage_analyzer_df'].columns 
-        if col not in ['name', 'dps_diff', 'hit_per_minute_diff']
+        if col not in ['name', f'{metric_type}_diff', 'hit_per_minute_diff']
     ]
     #remove guid column
     damage_cols = [col for col in damage_cols if col != 'guid']
-    st.write("### Damage Analysis")
+    st.write(f"### {metric_type.upper()} Analysis")
     st.dataframe(
         results['damage_analyzer_df'][damage_cols].style.background_gradient(
-            cmap='autumn', subset=['dps_diff','hit_per_minute_diff']
+            cmap='autumn', subset=[f'{metric_type}_diff','hit_per_minute_diff']
         ),
         use_container_width=True,
         hide_index=True
@@ -487,7 +494,7 @@ def main():
         
             # Display results if they exist
             if st.session_state.analysis_results:
-                display_analysis_results(st.session_state.analysis_results)
+                display_analysis_results(st.session_state.analysis_results, st.session_state.analysis_results['metric_type'])
 
                 # LLM Insights
                 if st.button("Generate Insights"):

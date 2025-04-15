@@ -181,11 +181,11 @@ def get_buff_info_df(buff_info: list):
         print(f"Error in get_buff_info_df: {e}")
         return pd.DataFrame()
 
-def get_damage_info_df(damage_data: dict):
+def get_damage_info_df(damage_data: dict, metric_type: str='dps'):
     try:
         damage_total_time = damage_data['totalTime']
         damage_info_df = pd.DataFrame(damage_data['entries'])
-        damage_info_df['dps'] = (damage_info_df['total']/damage_total_time*1000).round(0)
+        damage_info_df[metric_type] = (damage_info_df['total']/damage_total_time*1000).round(0)
         if 'critHitCount' in damage_info_df.columns:
             damage_info_df['crit_pct'] = (damage_info_df['critHitCount']/damage_info_df['hitCount']).round(2)*100
 
@@ -193,6 +193,19 @@ def get_damage_info_df(damage_data: dict):
         return damage_info_df
     except KeyError:
         print("KeyError: 'totalTime' not found in damage_data")
+        return pd.DataFrame()
+    
+def get_metric_info_df(damage_data: dict, metric_type: str='dps'):
+    try:
+        metric_total_time = damage_data['totalTime']
+        metric_info_df = pd.DataFrame(damage_data['entries'])
+        metric_info_df[metric_type] = (metric_info_df['total']/metric_total_time*1000).round(0)
+        if 'critHitCount' in metric_info_df.columns:
+            metric_info_df['crit_pct'] = (metric_info_df['critHitCount']/metric_info_df['hitCount']).round(2)*100
+        metric_info_df['hit_per_minute'] = (metric_info_df['hitCount']/metric_total_time*1000*60).round(2)
+        return metric_info_df
+    except KeyError:
+        print("KeyError: 'totalTime' not found")
         return pd.DataFrame()
     
 def get_cast_info_df(cast_data_resp):
