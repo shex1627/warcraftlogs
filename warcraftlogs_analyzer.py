@@ -283,7 +283,7 @@ def perform_analysis(client, ability_data_manager, url, selected_player, source_
             'datapoints': len(ability_df)
         })
     
-    cast_analyzer_df = pd.DataFrame(cast_analyzer_df_records)
+    cast_analyzer_df = pd.DataFrame(cast_analyzer_df_records).query(f"datapoints > {MIN_DATAPOINTS}")
     
     # Analyze buff differences
     buff_uptime_diff_dict = defaultdict(list)
