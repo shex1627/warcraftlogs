@@ -11,6 +11,7 @@ from warcraftlogs.gear.get_item_level import get_char_average_item_level, get_it
 from warcraftlogs.query.fight import get_damage_breakdown, get_cast_breakdown
 from warcraftlogs.analytics.compare import compare_damage, compare_casts
 from warcraftlogs.utils import format_number
+from warcraftlogs.constants import DUNGEON_RUN_LOCATION
 
 def apply_gradient_styling(df, column_name):
     styled = df.style.format(precision=2).applymap(
@@ -83,8 +84,10 @@ Copy and paste a Warcraft Logs dungeon report URL to get started.
             for role, role_player_details in players_info.items():
                 player_details_lst.extend(role_player_details)
             # Let user select player
-            player_names = [p['name'] for p in player_details_lst]
+            player_names = [f"{p['name']}--({p['type']}, {p['specs'][0]['spec']})" for p in player_details_lst]
+            #player_names = [p['name'] for p in player_details_lst]
             selected_player_name = st.selectbox("Select player to analyze", player_names)
+            selected_player_name = selected_player_name.split('--')[0]
             selected_player = next(p for p in player_details_lst if p['name'] == selected_player_name)
             st.session_state['selected_player'] = selected_player
 
@@ -132,7 +135,8 @@ Copy and paste a Warcraft Logs dungeon report URL to get started.
                         progress_bar.progress(page_index / len(pages))
                 run_manager = MythicPlusRunManager()
                 run_manager.add_runs(runs_info)
-                run_manager.save_to_file(f"{dungeon_name}_{keystone_level}_{player_class}_{player_spec}.pkl")
+                file_path = os.path.join(DUNGEON_RUN_LOCATION, f"{dungeon_name}_{keystone_level}_{player_class}_{player_spec}.pkl")
+                run_manager.save_to_file(file_path)
 
                 # Step 6: Build DataFrame for selection
                 temp_df = pd.DataFrame(sorted(
@@ -143,6 +147,7 @@ Copy and paste a Warcraft Logs dungeon report URL to get started.
                 compare_df = compare_df.sort_values(by=['item_level_bracket', 'raw_dps'], ascending=False)
 
                 # Step 7: Filter by item level if needed
+                print(f"selected player name {selected_player_name}")
                 reference_ivl = get_char_average_item_level(
                     report_id=report_code,
                     fight_id=fight_id,
@@ -214,6 +219,10 @@ Copy and paste a Warcraft Logs dungeon report URL to get started.
                 if key.startswith(('step', 'confirmed', 'comparison', 'report_', 'fight_', 'selected_', 'find_', 'compare_', 'log_', 'chosen_')):
                     del st.session_state[key]
             st.rerun()
+
+        # show both logs urls
+        st.markdown(f"""Your log: [Warcraft Logs Report](https://www.warcraftlogs.com/reports/{st.session_state['report_code']})""")
+        st.markdown(f"""Comparison log: [Warcraft Logs Report](https://www.warcraftlogs.com/reports/{st.session_state['chosen_record']['report_id']})""")
         
         # Your existing comparison logic using session state data...
         reference_report_info = {
