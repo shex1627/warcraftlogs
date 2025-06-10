@@ -1,1 +1,2 @@
-TOKEN_DIR = "~/.warcraftlogs/tokens"
+TOKEN_DIR = "/Users/shadowclone/Desktop/Code/warcraftlogs/warcraftlogs/data/tokens"
+SCHEMA_LOCATION = "/Users/shadowclone/Desktop/Code/warcraftlogs/scripts/warcraftlogs_docs/warcraftlogs_api_docs_cleaned.json"

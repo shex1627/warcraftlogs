@@ -2,6 +2,8 @@ from typing import Optional, Tuple, List, Dict
 from dataclasses import dataclass
 import pandas as pd
 
+from warcraftlogs.gear.get_item_level import get_item_level_bracket
+
 @dataclass
 class PlayerDetails:
     #spec_id: int
@@ -13,20 +15,6 @@ class PlayerDetails:
     class_name: str
     item_level: float
     bracket: int
-
-def get_item_level_bracket(item_level: float) -> int:
-    """Convert item level to bracket number (1-17)"""
-    bracket_ranges = [
-        (633, 635), (636, 638), (639, 641), (642, 644),
-        (645, 647), (648, 650), (651, 653), (654, 656),
-        (657, 659), (660, 662), (663, 665), (666, 668),
-        (669, 671), (672, 674), (675, 677), (678, 680)
-    ]
-    
-    for i, (min_ilvl, max_ilvl) in enumerate(bracket_ranges, 1):
-        if min_ilvl <= item_level <= max_ilvl:
-            return i
-    return 17 if item_level > 680 else 1
 
 def get_player_details(client, report_code: str, fight_id: int, source_id: int=None) -> PlayerDetails:
     """Fetch player's spec, class and gear information
@@ -217,3 +205,119 @@ def example_usage(client):
         fight_id=1,
         source_id=42
     ) 
+
+def get_player_info(client, report_code, fight_id):
+    """
+    Get all player names, class and spec information for a specific fight in a report.
+    
+    Args:
+        client: Object with query_public_api(query, variables) method
+        report_code: String - The report code (e.g., "Wbcf3HZxjdrTyQqJ")
+        fight_id: Integer - The fight ID within the report
+    
+    Returns:
+        List of dictionaries containing player information:
+        [
+            {
+                'name': 'PlayerName',
+                'class': 'ClassName', 
+                'spec': 'SpecName',
+                'actor_id': 123,
+                'type': 'Player',
+                'server': 'ServerName',
+                'role': 'Tank/Healer/DPS'
+            }
+        ]
+    """
+    
+    # GraphQL query to get fight data and player details
+    query = """
+    query GetPlayerInfo($code: String!, $fightId: Int!) {
+        reportData {
+            report(code: $code) {
+                fights(fightIDs: [$fightId]) {
+                    id
+                    name
+                    friendlyPlayers
+                }
+                playerDetails(fightIDs: [$fightId], includeCombatantInfo: true)
+            }
+        }
+    }
+    """
+    
+    variables = {
+        "code": report_code,
+        "fightId": fight_id
+    }
+    
+    try:
+        # Execute the query
+        response = client.query_public_api(query, variables)
+        
+        if not response or 'data' not in response:
+            raise Exception(f"Invalid response from API: {response}")
+            
+        report = response['data']['reportData']['report']
+        
+        if not report:
+            raise Exception(f"Report not found: {report_code}")
+            
+        if not report['fights']:
+            raise Exception(f"Fight {fight_id} not found in report {report_code}")
+            
+        player_details_data = report.get('playerDetails')
+        
+        if not player_details_data or 'data' not in player_details_data:
+            raise Exception(f"No player details found for fight {fight_id}")
+            
+        # Extract player information from all roles
+        players = []
+        player_data = player_details_data['data']['playerDetails']
+        
+        # Process tanks
+        for tank in player_data.get('tanks', []):
+            spec_info = tank.get('specs', [{}])[0] if tank.get('specs') else {}
+            player_info = {
+                'name': tank.get('name', 'Unknown'),
+                'class': tank.get('type', 'Unknown'),  # 'type' field contains the class
+                'spec': spec_info.get('spec', 'Unknown'),
+                'actor_id': tank.get('id'),
+                'type': 'Player',
+                'server': tank.get('server', 'Unknown'),
+                'role': 'Tank'
+            }
+            players.append(player_info)
+        
+        # Process healers  
+        for healer in player_data.get('healers', []):
+            spec_info = healer.get('specs', [{}])[0] if healer.get('specs') else {}
+            player_info = {
+                'name': healer.get('name', 'Unknown'),
+                'class': healer.get('type', 'Unknown'),
+                'spec': spec_info.get('spec', 'Unknown'),
+                'actor_id': healer.get('id'),
+                'type': 'Player',
+                'server': healer.get('server', 'Unknown'),
+                'role': 'Healer'
+            }
+            players.append(player_info)
+            
+        # Process DPS
+        for dps in player_data.get('dps', []):
+            spec_info = dps.get('specs', [{}])[0] if dps.get('specs') else {}
+            player_info = {
+                'name': dps.get('name', 'Unknown'),
+                'class': dps.get('type', 'Unknown'),
+                'spec': spec_info.get('spec', 'Unknown'),
+                'actor_id': dps.get('id'),
+                'type': 'Player',
+                'server': dps.get('server', 'Unknown'),
+                'role': 'DPS'
+            }
+            players.append(player_info)
+        
+        return players
+        
+    except Exception as e:
+        raise Exception(f"Error fetching player info: {str(e)}")

@@ -14,6 +14,7 @@ setup(
     packages=find_packages(),
     install_requires=[
         "requests>=2.25.0",
+        "mcp[cli]"
     ],
     python_requires=">=3.7",
     classifiers=[

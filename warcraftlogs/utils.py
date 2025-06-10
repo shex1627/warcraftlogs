@@ -158,3 +158,48 @@ def parse_json_schema(
         # Handle primitive values
         return f"{indent * current_depth}{type(json_data).__name__} ({repr(json_data) if len(repr(json_data)) < 50 else repr(json_data)[:47] + '...'})\n"
     
+def format_number(number, precision=1):
+   """
+   Format large numbers into human-readable strings.
+   
+   Args:
+       number: Integer or float - The number to format
+       precision: Integer - Number of decimal places for abbreviated numbers (default: 1)
+   
+   Returns:
+       String - Formatted number
+   
+   Examples:
+       format_number(1234567) -> "1.2M"
+       format_number(987654321) -> "987.7M"
+       format_number(1234567890) -> "1.2B"
+       format_number(12345) -> "12.3K"
+       format_number(999) -> "999"
+       format_number(0) -> "0"
+   """
+   
+   if number == 0:
+       return "0"
+   
+   # Handle negative numbers
+   if number < 0:
+       return "-" + format_number(abs(number), precision)
+   
+   # Define the suffixes and their thresholds
+   suffixes = [
+       (1_000_000_000_000, 'T'),  # Trillion
+       (1_000_000_000, 'B'),      # Billion
+       (1_000_000, 'M'),          # Million
+       (1_000, 'K')               # Thousand
+   ]
+   
+   # Find the appropriate suffix
+   for threshold, suffix in suffixes:
+       if number >= threshold:
+           value = number / threshold
+           # Format with specified precision, removing trailing zeros
+           formatted = f"{value:.{precision}f}".rstrip('0').rstrip('.')
+           return f"{formatted}{suffix}"
+   
+   # For numbers less than 1000, return as integer
+   return str(int(number))

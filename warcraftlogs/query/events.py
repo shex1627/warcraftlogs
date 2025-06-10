@@ -218,4 +218,362 @@ def get_cast_info_df(cast_data_resp):
     except KeyError:
         print("KeyError: 'totalTime' not found in cast_data_resp")
         return pd.DataFrame()
+
+def get_ability_cast_events(report_id: str, fight_id: int, character_name: str, abilities: list, query_graphql_func):
+    """
+    Get individual cast events with timestamps for specific abilities for a character in a fight.
     
+    Args:
+        report_id (str): The WarcraftLogs report code (e.g., "ABC123DEF")
+        fight_id (int): The specific fight ID within the report
+        character_name (str): The character name to search for (case-insensitive)
+        abilities (list): List of ability names (str) or ability IDs (int), or mixed list
+                         Examples: ["Thrash", "Moonfire"] or [77758, 8921] or ["Thrash", 8921]
+        query_graphql_func: Function that executes GraphQL queries against WarcraftLogs API.
+                           Should have signature: query_graphql_func(query_string, variables_dict) -> dict
+        
+    Returns:
+        dict: Contains cast events data with the following structure:
+        {
+            'fight_duration_seconds': float,
+            'fight_info': {
+                'id': int,
+                'name': str,
+                'start_time': float,
+                'end_time': float
+            },
+            'character_info': {
+                'id': int,
+                'name': str,
+                'type': str,  # class
+                'server': str
+            },
+            'cast_events': [
+                {
+                    'time_formatted': str,  # e.g., "00:12.602"
+                    'timestamp_ms': int,    # relative to fight start
+                    'type': str,           # "Cast"
+                    'ability_name': str,
+                    'ability_id': int,
+                    'source': str,         # character name
+                    'target': str,         # target name (if any)
+                    'icon': str
+                }
+            ],
+            'abilities_found': list[str],
+            'abilities_not_found': list[str],
+            'ability_ids_used': list[int],
+            'total_events': int
+        }
+        
+    Raises:
+        ValueError: If report, fight, or character not found
+        Exception: If GraphQL query fails or returns unexpected data
+        
+    Example:
+        # Using ability names
+        result = get_ability_cast_events(
+            report_id="Wbcf3HZxjdrTyQqJ",
+            fight_id=1, 
+            character_name="Shexclaw",
+            abilities=["Thrash", "Moonfire"],
+            query_graphql_func=your_graphql_client
+        )
+        
+        # Using ability IDs
+        result = get_ability_cast_events(
+            report_id="Wbcf3HZxjdrTyQqJ",
+            fight_id=1, 
+            character_name="Shexclaw",
+            abilities=[77758, 8921],
+            query_graphql_func=your_graphql_client
+        )
+        
+        # Mixed names and IDs
+        result = get_ability_cast_events(
+            report_id="Wbcf3HZxjdrTyQqJ",
+            fight_id=1, 
+            character_name="Shexclaw",
+            abilities=["Thrash", 8921],
+            query_graphql_func=your_graphql_client
+        )
+    """
+    
+    # Step 1: Get fight duration and validate fight exists
+    fight_query = """
+    query GetFightInfo($reportCode: String!, $fightID: Int!) {
+        reportData {
+            report(code: $reportCode) {
+                fights(fightIDs: [$fightID]) {
+                    id
+                    startTime
+                    endTime
+                    name
+                }
+            }
+        }
+    }
+    """
+    
+    try:
+        fight_result = query_graphql_func(
+            fight_query, 
+            {"reportCode": report_id, "fightID": fight_id}
+        )
+        
+        if not fight_result.get('data', {}).get('reportData', {}).get('report'):
+            raise ValueError(f"Report {report_id} not found")
+            
+        fights = fight_result['data']['reportData']['report']['fights']
+        if not fights:
+            raise ValueError(f"Fight {fight_id} not found in report {report_id}")
+            
+        fight_info = fights[0]
+        fight_duration_ms = fight_info['endTime'] - fight_info['startTime']
+        fight_duration_seconds = fight_duration_ms / 1000.0
+        
+        # Store fight info for result
+        fight_data = {
+            'id': fight_info['id'],
+            'name': fight_info['name'],
+            'start_time': fight_info['startTime'],
+            'end_time': fight_info['endTime']
+        }
+        
+    except Exception as e:
+        raise Exception(f"Failed to get fight information: {str(e)}")
+    
+    # Step 2: Get master data to find character ID and ability mappings
+    master_data_query = """
+    query GetMasterData($reportCode: String!) {
+        reportData {
+            report(code: $reportCode) {
+                masterData {
+                    actors(type: "Player") {
+                        id
+                        name
+                        type
+                        server
+                    }
+                    abilities {
+                        gameID
+                        name
+                        icon
+                    }
+                }
+            }
+        }
+    }
+    """
+    
+    try:
+        master_result = query_graphql_func(
+            master_data_query,
+            {"reportCode": report_id}
+        )
+        
+        master_data = master_result['data']['reportData']['report']['masterData']
+        actors_data = master_data['actors']
+        abilities_data = master_data['abilities']
+        
+        # Find the character by name (case-insensitive)
+        character_info = None
+        player_id = None
+        
+        for actor in actors_data:
+            if actor['name'] and actor['name'].lower() == character_name.lower():
+                character_info = {
+                    'id': actor['id'],
+                    'name': actor['name'],
+                    'type': actor.get('type', ''),
+                    'server': actor.get('server', '')
+                }
+                player_id = actor['id']
+                break
+        
+        if not character_info:
+            available_players = [actor['name'] for actor in actors_data if actor['name']][:10]
+            print(f"Character '{character_name}' not found. Available players: {available_players}")
+            raise ValueError(f"Character '{character_name}' not found in report {report_id}")
+        
+        # Create mapping of ability names to game IDs and game IDs to info
+        ability_name_to_id = {}
+        ability_id_to_info = {}
+        
+        for ability in abilities_data:
+            if ability['name']:  # Skip abilities without names
+                ability_name_to_id[ability['name'].lower()] = ability['gameID']
+            
+            ability_id_to_info[ability['gameID']] = {
+                'name': ability['name'],
+                'icon': ability.get('icon', '')
+            }
+        
+        # Process input abilities (can be names, IDs, or mixed)
+        target_ability_ids = []
+        abilities_found = []
+        abilities_not_found = []
+        
+        for ability in abilities:
+            if isinstance(ability, int):
+                # It's an ability ID
+                if ability in ability_id_to_info:
+                    target_ability_ids.append(ability)
+                    ability_name = ability_id_to_info[ability]['name'] or f"Ability {ability}"
+                    abilities_found.append(ability_name)
+                else:
+                    abilities_not_found.append(f"ID:{ability}")
+                    print(f"Warning: Ability ID {ability} not found in report master data")
+            
+            elif isinstance(ability, str):
+                # It's an ability name
+                name_lower = ability.lower()
+                if name_lower in ability_name_to_id:
+                    game_id = ability_name_to_id[name_lower]
+                    target_ability_ids.append(game_id)
+                    abilities_found.append(ability)
+                else:
+                    abilities_not_found.append(ability)
+                    print(f"Warning: Ability '{ability}' not found in report master data")
+            
+            else:
+                print(f"Warning: Invalid ability type {type(ability)}: {ability}. Must be string (name) or int (ID)")
+                abilities_not_found.append(str(ability))
+        
+        if not target_ability_ids:
+            print("No valid abilities found in master data.")
+            if abilities_data:
+                print("Available abilities (sample):")
+                sample_abilities = [(a['gameID'], a['name']) for a in abilities_data if a['name']][:10]
+                for aid, aname in sample_abilities:
+                    print(f"  ID {aid}: {aname}")
+            raise ValueError("None of the specified abilities were found in the report")
+            
+    except Exception as e:
+        raise Exception(f"Failed to get master data: {str(e)}")
+    
+    # Step 3: Query cast events with ability filter
+    if target_ability_ids:
+        # Create filter expression for specific abilities
+        ability_ids_str = ', '.join(map(str, target_ability_ids))
+        filter_expression = f"ability.id in ({ability_ids_str})"
+    else:
+        filter_expression = None
+    
+    events_query = """
+    query GetCastEvents($reportCode: String!, $fightID: Int!, $playerID: Int!, $filterExpr: String) {
+        reportData {
+            report(code: $reportCode) {
+                events(
+                    dataType: Casts
+                    fightIDs: [$fightID]
+                    sourceID: $playerID
+                    filterExpression: $filterExpr
+                    limit: 10000
+                ) {
+                    data
+                }
+            }
+        }
+    }
+    """
+    
+    try:
+        events_variables = {
+            "reportCode": report_id,
+            "fightID": fight_id,
+            "playerID": player_id,
+            "filterExpr": filter_expression
+        }
+        
+        # Remove null filter expression to avoid GraphQL issues
+        if filter_expression is None:
+            del events_variables["filterExpr"]
+            events_query = """
+            query GetCastEvents($reportCode: String!, $fightID: Int!, $playerID: Int!) {
+                reportData {
+                    report(code: $reportCode) {
+                        events(
+                            dataType: Casts
+                            fightIDs: [$fightID]
+                            sourceID: $playerID
+                            limit: 10000
+                        ) {
+                            data
+                        }
+                    }
+                }
+            }
+            """
+        
+        events_result = query_graphql_func(events_query, events_variables)
+        
+        events_data = events_result['data']['reportData']['report']['events']
+        
+        if not events_data or 'data' not in events_data:
+            raise ValueError(f"No cast events found for character '{character_name}' in fight {fight_id}")
+            
+    except Exception as e:
+        raise Exception(f"Failed to get cast events: {str(e)}")
+    
+    # Step 4: Process the cast events
+    def format_timestamp(timestamp_ms):
+        """Convert milliseconds to MM:SS.mmm format"""
+        total_seconds = timestamp_ms / 1000.0
+        minutes = int(total_seconds // 60)
+        seconds = total_seconds % 60
+        return f"{minutes:02d}:{seconds:06.3f}"
+    
+    def get_target_name(event, actors_data):
+        """Get target name from target ID"""
+        target_id = event.get('targetID')
+        if target_id and target_id != -1:  # -1 means "Environment" or no specific target
+            for actor in actors_data:
+                if actor['id'] == target_id:
+                    return actor.get('name', 'Unknown')
+        return None
+    
+    cast_events = []
+    
+    # Process events
+    events_list = events_data['data']
+    
+    for event in events_list:
+        ability_id = event.get('abilityGameID')
+        
+        if ability_id and ability_id in ability_id_to_info:
+            ability_info = ability_id_to_info[ability_id]
+            timestamp_ms = event.get('timestamp', 0)
+            
+            # Get target name if available
+            target_name = get_target_name(event, actors_data)
+            
+            cast_event = {
+                'time_formatted': format_timestamp(timestamp_ms),
+                'timestamp_ms': timestamp_ms,
+                'type': 'Cast',
+                'ability_name': ability_info['name'] or f"Ability {ability_id}",
+                'ability_id': ability_id,
+                'source': character_info['name'],
+                'target': target_name,
+                'icon': ability_info['icon']
+            }
+            
+            cast_events.append(cast_event)
+    
+    # Sort events by timestamp
+    cast_events.sort(key=lambda x: x['timestamp_ms'])
+    
+    # Step 5: Build result
+    result = {
+        'fight_duration_seconds': fight_duration_seconds,
+        'fight_info': fight_data,
+        'character_info': character_info,
+        'cast_events': cast_events,
+        'abilities_found': abilities_found,
+        'abilities_not_found': abilities_not_found,
+        'ability_ids_used': target_ability_ids,
+        'total_events': len(cast_events)
+    }
+    
+    return result
