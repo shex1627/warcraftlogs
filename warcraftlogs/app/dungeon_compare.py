@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+from pathlib import Path
 from warcraftlogs import WarcraftLogsClient
 from warcraftlogs.constants import TOKEN_DIR
 from warcraftlogs.query.reports import extract_report_info, get_encounter_info
@@ -38,7 +39,6 @@ Note: DPS differences may also be due to different dungeon routes.
 
 Copy and paste a Warcraft Logs dungeon report URL to get started.
 """)
-
     if os.environ.get('HIDE_MENU', 'true') == 'true':
         st.markdown("""
             <style>
@@ -116,35 +116,56 @@ Copy and paste a Warcraft Logs dungeon report URL to get started.
                     pages = [1]
                     max_reports = 20
 
-                runs_info = []
-                with st.spinner("Fetching top logs..."):
-                    # show progress bar from 
-                    progress_bar = st.progress(0, text="Fetching runs from Warcraft Logs pages...")
-                    for page_index in range(len(pages)):
-                        page = pages[page_index]
-                        runs = get_mythic_plus_runs(
-                            client=client,
-                            dungeon_name=dungeon_name,
-                            keystone_level=keystone_level,
-                            page=page,
-                            max_reports=max_reports,
-                            class_filter=player_class,
-                            spec_filter=player_spec,
-                        )
-                        runs_info.extend(runs)
-                        progress_bar.progress(page_index / len(pages))
                 run_manager = MythicPlusRunManager()
-                run_manager.add_runs(runs_info)
-                file_path = os.path.join(DUNGEON_RUN_LOCATION, f"{dungeon_name}_{keystone_level}_{player_class}_{player_spec}.pkl")
-                run_manager.save_to_file(file_path)
+                dungeon_runs_paths = list(Path(DUNGEON_RUN_LOCATION).glob("*.pkl"))
 
-                # Step 6: Build DataFrame for selection
-                temp_df = pd.DataFrame(sorted(
-                    run_manager.get_runs(dungeon_name, keystone_level, player_class, player_spec),
-                    key=lambda x: x['player']['raw_dps'], reverse=True
-                ))
-                compare_df = pd.concat([temp_df, pd.DataFrame(temp_df['player'].tolist())], axis=1)
-                compare_df = compare_df.sort_values(by=['item_level_bracket', 'raw_dps'], ascending=False)
+                use_cached_runs = False
+                for dungeon_run_path in dungeon_runs_paths:
+                    stats = run_manager.add_from_file(str(dungeon_run_path))
+                try:
+                    temp_df = pd.DataFrame(sorted(
+                        run_manager.get_runs(dungeon_name, keystone_level, player_class, player_spec),
+                        key=lambda x: x['player']['raw_dps'], reverse=True
+                    ))
+                    compare_df = pd.concat([temp_df, pd.DataFrame(temp_df['player'].tolist())], axis=1)
+                    compare_df = compare_df.sort_values(by=['item_level_bracket', 'raw_dps'], ascending=False)
+                    if compare_df.shape[0] > 5:
+                        use_cached_runs = True
+                        #st.warning("Using cached runs for faster comparison. You can change this in the settings.")
+                except Exception as e:
+                    st.error(f"Error loading existing runs: {e}")
+                    compare_df = pd.DataFrame()
+
+                if not use_cached_runs:
+                    runs_info = []
+                    with st.spinner("Fetching top logs..."):
+                        # show progress bar from 
+                        progress_bar = st.progress(0, text="Fetching runs from Warcraft Logs pages...")
+                        for page_index in range(len(pages)):
+                            page = pages[page_index]
+                            runs = get_mythic_plus_runs(
+                                client=client,
+                                dungeon_name=dungeon_name,
+                                keystone_level=keystone_level,
+                                page=page,
+                                max_reports=max_reports,
+                                class_filter=player_class,
+                                spec_filter=player_spec,
+                            )
+                            runs_info.extend(runs)
+                            progress_bar.progress(page_index / len(pages))
+                    
+                    run_manager.add_runs(runs_info)
+                    file_path = os.path.join(DUNGEON_RUN_LOCATION, f"{dungeon_name}_{keystone_level}_{player_class}_{player_spec}.pkl")
+                    run_manager.save_to_file(file_path)
+
+                    # Step 6: Build DataFrame for selection
+                    temp_df = pd.DataFrame(sorted(
+                        run_manager.get_runs(dungeon_name, keystone_level, player_class, player_spec),
+                        key=lambda x: x['player']['raw_dps'], reverse=True
+                    ))
+                    compare_df = pd.concat([temp_df, pd.DataFrame(temp_df['player'].tolist())], axis=1)
+                    compare_df = compare_df.sort_values(by=['item_level_bracket', 'raw_dps'], ascending=False)
 
                 # Step 7: Filter by item level if needed
                 print(f"selected player name {selected_player_name}")

@@ -321,6 +321,69 @@ class MythicPlusRunManager:
         #self.stats['players_by_spec'] = defaultdict(int, data['stats'].get('players_by_spec', {}))
         #self.stats['runs_by_dungeon'] = defaultdict(int, data['stats'].get('runs_by_dungeon', {}))
     
+    def add_from_file(self, filepath: str) -> Dict[str, int]:
+        """
+        Add data from file to existing data.
+        
+        Args:
+            filepath: Path to .pkl or .json file containing run data
+            
+        Returns:
+            Dict with statistics about merged data:
+                - new_runs: Number of new runs added
+                - new_reports: Number of new reports added
+        """
+        # Load data from file
+        if filepath.endswith('.json'):
+            with open(filepath, 'r') as f:
+                data = json.load(f)
+        else:  # Default to pickle
+            with open(filepath, 'rb') as f:
+                data = pickle.load(f)
+                
+        stats = {'new_runs': 0, 'new_reports': 0}
+        
+        # Merge runs_data
+        for dungeon, key_data in data['runs_data'].items():
+            for key_level, class_data in key_data.items():
+                for class_name, spec_data in class_data.items():
+                    for spec_name, ilvl_data in spec_data.items():
+                        for ilvl_bracket, runs in ilvl_data.items():
+                            key_level = int(key_level)
+                            ilvl_bracket = int(ilvl_bracket)
+                            
+                            # Add each run if not already present
+                            for run in runs:
+                                report_key = (run['report_id'], run['fight_id'])
+                                player_key = f"{run['player']['character_name']}_{run['player']['class']}_{run['player']['spec']}"
+                                
+                                # Check if run already exists
+                                if (report_key in self.report_tracking and 
+                                    player_key in self.report_tracking[report_key]['players_added']):
+                                    continue
+                                    
+                                # Add run
+                                self.runs_data[dungeon][key_level][class_name][spec_name][ilvl_bracket].append(run)
+                                
+                                # Update tracking
+                                if report_key not in self.report_tracking:
+                                    self.report_tracking[report_key] = {
+                                        'dungeon': dungeon,
+                                        'key_level': key_level,
+                                        'players_added': {player_key}
+                                    }
+                                    stats['new_reports'] += 1
+                                else:
+                                    self.report_tracking[report_key]['players_added'].add(player_key)
+                                
+                                # Update statistics
+                                self.stats['total_runs'] += 1
+                                self.stats['players_by_class'][class_name] += 1
+                                self.stats['players_by_spec'][f"{class_name}_{spec_name}"] += 1
+                                self.stats['runs_by_dungeon'][dungeon] += 1
+                                stats['new_runs'] += 1
+        return stats
+
     def _get_dungeon_from_encounter(self, encounter_id: str) -> str:
         """Map encounter ID to dungeon name (helper method)."""
         # You might want to store this mapping or infer it from the data
