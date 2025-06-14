@@ -245,9 +245,9 @@ def get_char_average_item_level(
         valid_gear_items = []
         gear_details = []  # For verbose output
         
-        # Standard gear slot names for reference
+        # Standard gear slot names for reference #"Shirt/Tabard", 
         slot_names = [
-            "Head", "Neck", "Shoulders", "Shirt/Tabard", "Chest", "Belt", 
+            "Head", "Neck", "Shoulders", "Chest", "Belt", 
             "Legs", "Feet", "Wrists", "Hands", "Ring 1", "Ring 2", 
             "Trinket 1", "Trinket 2", "Main Hand", "Off Hand", "Ranged/Relic"
         ]
@@ -258,7 +258,7 @@ def get_char_average_item_level(
             item_quality = item.get("quality", 0)
             
             # Filter out cosmetic items (item level 0 or 1) and empty slots (id 0)
-            if item_level > 1 and item_id > 0:
+            if item_level > 500 and item_id > 0:
                 valid_gear_items.append(item_level)
                 
                 if verbose and i < len(slot_names):

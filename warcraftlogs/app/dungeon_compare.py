@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from warcraftlogs import WarcraftLogsClient
 from warcraftlogs.constants import TOKEN_DIR
-from warcraftlogs.query.reports import extract_report_info, get_encounter_info
+from warcraftlogs.query.reports import extract_report_info, get_encounter_info, get_player_dps_and_ilvl
 from warcraftlogs.query.player_analysis import get_player_details
 from warcraftlogs.query.dungeon.get_dungeon_runs import get_mythic_plus_runs
 from warcraftlogs.query.dungeon.run_manager import MythicPlusRunManager
@@ -130,12 +130,14 @@ Copy and paste a Warcraft Logs dungeon report URL to get started.
                     compare_df = pd.concat([temp_df, pd.DataFrame(temp_df['player'].tolist())], axis=1)
                     compare_df = compare_df.sort_values(by=['item_level_bracket', 'raw_dps'], ascending=False)
                     if compare_df.shape[0] > 5:
+                        print(f"Found {compare_df.shape[0]} cached runs for {dungeon_name} at level {keystone_level} for {player_class} {player_spec}.")
                         use_cached_runs = True
                         #st.warning("Using cached runs for faster comparison. You can change this in the settings.")
                 except Exception as e:
                     st.error(f"Error loading existing runs: {e}")
                     compare_df = pd.DataFrame()
 
+                print(f"Using cached runs: {use_cached_runs}")
                 if not use_cached_runs:
                     runs_info = []
                     with st.spinner("Fetching top logs..."):
@@ -168,13 +170,21 @@ Copy and paste a Warcraft Logs dungeon report URL to get started.
                     compare_df = compare_df.sort_values(by=['item_level_bracket', 'raw_dps'], ascending=False)
 
                 # Step 7: Filter by item level if needed
-                print(f"selected player name {selected_player_name}")
-                reference_ivl = get_char_average_item_level(
-                    report_id=report_code,
-                    fight_id=fight_id,
-                    character_name=selected_player_name,
-                    client=client
-                )
+                dungeon_info = get_player_dps_and_ilvl(report_code=report_code,fight_id=fight_id, query_graphql_func=client.query_public_api)
+                try:
+                    players_information = dungeon_info.get('players')
+                    for player_info in players_information:
+                        if player_info.get('name') == selected_player_name:
+                            reference_ivl = player_info.get('item_level')
+                            break
+                except Exception as e:
+                    print(f"Error extracting player info: {e}")
+                    reference_ivl = get_char_average_item_level(
+                        report_id=report_code,
+                        fight_id=fight_id,
+                        character_name=selected_player_name,
+                        client=client
+                    )
                 if find_similar:
                     compare_record = compare_df.query(
                         f"item_level_bracket <= {get_item_level_bracket(reference_ivl)}"

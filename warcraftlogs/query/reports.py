@@ -207,4 +207,125 @@ def get_encounter_info(query_function, report_code, fight_id):
             'keystone_level': None,
             'fight_type': 'unknown'
         }
+
+def get_player_dps_and_ilvl(report_code: str, fight_id: int, query_graphql_func) -> dict:
+    """
+    Get DPS and item level information for all players in a specific fight
     
+    Args:
+        report_code: Warcraft Logs report code (e.g., "dnwvbGp2A9ZmXFy7")
+        fight_id: Fight ID number (e.g., 1)
+        query_graphql_func: Function that takes (query, variables) and returns GraphQL response
+        
+    Returns:
+        Dictionary with fight info and player data:
+        {
+            'fight_id': int,
+            'name': str,
+            'duration_minutes': float,
+            'encounter_id': int,
+            'difficulty': int,
+            'keystone_level': int or None,
+            'players': [
+                {
+                    'name': str,
+                    'class_spec': str,
+                    'item_level': int,
+                    'total_damage': int,
+                    'dps': float,
+                    'active_time_minutes': float,
+                    'top_abilities': [{'name': str, 'total': int, 'type': int}, ...]
+                }, ...
+            ]
+        }
+    """
+    
+    query = """
+    query GetPlayerDPSAndItemLevel($code: String!, $fightID: Int!) {
+      reportData {
+        report(code: $code) {
+          fights(fightIDs: [$fightID]) {
+            id
+            name
+            startTime
+            endTime
+            encounterID
+            difficulty
+            keystoneLevel
+          }
+          
+          table(
+            fightIDs: [$fightID]
+            dataType: DamageDone
+            viewBy: Source
+            hostilityType: Friendlies
+          )
+        }
+      }
+    }
+    """
+    
+    variables = {
+        "code": report_code,
+        "fightID": fight_id
+    }
+    
+    # Execute the query using the provided function
+    result = query_graphql_func(query, variables)
+    
+    # Parse the response
+    report_data = result['data']['reportData']['report']
+    fight_data = report_data['fights'][0]
+    table_data = report_data['table']['data']['entries']
+    
+    # Calculate fight duration
+    duration_ms = fight_data['endTime'] - fight_data['startTime']
+    duration_seconds = duration_ms / 1000
+    duration_minutes = duration_seconds / 60
+    
+    # Process player data
+    players = []
+    
+    for player in table_data:
+        # Extract class and spec from icon field
+        icon = player.get('icon', '')
+        class_spec = icon.replace('-', ' ') if icon else f"{player['type']} (Unknown Spec)"
+        
+        # Calculate DPS
+        total_damage = player['total']
+        dps = total_damage / duration_seconds if duration_seconds > 0 else 0
+        
+        # Calculate active time in minutes
+        active_time_ms = player.get('activeTime', 0)
+        active_time_minutes = active_time_ms / (1000 * 60)
+        
+        # Get top 5 abilities
+        top_abilities = player.get('abilities', [])#[:top_abilities_ct]
+        
+        player_dict = {
+            'name': player['name'],
+            'class_spec': class_spec,
+            'item_level': player.get('itemLevel', 0),
+            'total_damage': total_damage,
+            'dps': round(dps, 0),
+            'active_time_minutes': round(active_time_minutes, 1),
+            'top_abilities': top_abilities
+        }
+        
+        players.append(player_dict)
+    
+    # Sort players by DPS (descending)
+    players.sort(key=lambda p: p['dps'], reverse=True)
+    
+    # Create fight info dictionary
+    fight_info = {
+        'fight_id': fight_data['id'],
+        'name': fight_data['name'],
+        'duration_minutes': round(duration_minutes, 1),
+        'encounter_id': fight_data['encounterID'],
+        'difficulty': fight_data.get('difficulty', 0),
+        'keystone_level': fight_data.get('keystoneLevel'),
+        'players': players
+    }
+    
+    return fight_info
