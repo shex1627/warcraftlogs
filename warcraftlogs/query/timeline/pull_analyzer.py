@@ -1,5 +1,5 @@
 import json
-from typing import Dict, List, Tuple, Set, Any
+from typing import Dict, List, Tuple, Set, Any, Optional
 from dataclasses import dataclass, field
 from collections import defaultdict
 
@@ -34,6 +34,10 @@ class Pull:
     end_time: int
     encounter_id: int = 0  # 0 for trash, boss ID for bosses
     mobs: List[MobInstance] = field(default_factory=list)
+    is_chain_pull: bool = False
+    prev_pull_id: Optional[int] = None
+    overlap_duration: Optional[float] = None
+    gap_time: Optional[float] = None
     x: int = None
     y: int = None
     
@@ -239,26 +243,36 @@ class DungeonPullAnalyzer:
             
             # Process damage events (tank attacking mobs)
             for event in damage_events:
-                if event['type'] == 'damage' and 'targetID' in event and 'targetInstance' in event:
-                    mob_key = (event['targetID'], event['targetInstance'])
+                if event['targetID'] == 46:
+                    print(f"processing gigazap events")
+                    print(event)
+                targetInstance = event.get('targetInstance', 0)
+                # and 'targetInstance' in event
+                if event['type'] == 'damage' and 'targetID' in event:
+                    mob_key = (event['targetID'], targetInstance)
                     timestamp = event['timestamp']
-                    
+                    if event['targetID'] == 46:
+                        print(f"creating mob key {mob_key} at {timestamp}")
                     if mob_key not in all_mob_instances:
                         actor_info = self.actor_lookup.get(event['targetID'], {})
-                        all_mob_instances[mob_key] = MobInstance(
-                            actor_id=event['targetID'],
-                            instance_id=event['targetInstance'],
-                            game_id=actor_info.get('gameID', 0),
-                            name=actor_info.get('name', f"Unknown {event['targetID']}"),
-                            first_damage_time=timestamp,
-                            last_activity_time=timestamp
-                        )
+                        if actor_info['type'] != 'Player':
+                            all_mob_instances[mob_key] = MobInstance(
+                                actor_id=event['targetID'],
+                                instance_id=targetInstance,
+                                game_id=actor_info.get('gameID', 0),
+                                name=actor_info.get('name', f"Unknown {event['targetID']}"),
+                                first_damage_time=timestamp,
+                                last_activity_time=timestamp
+                            )
                     else:
                         # Update last activity time
                         all_mob_instances[mob_key].last_activity_time = timestamp
             
             # Process threat events (mobs attacking tank)
             for event in threat_events:
+                if event['targetID'] == 46:
+                    print(f"processing threat gigazap events")
+                    print(event)
                 #and 'sourceInstance' in event 
                 if (event['type'] == 'cast' and 'sourceID' in event 
                     and event.get('melee', False)):
