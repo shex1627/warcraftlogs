@@ -147,6 +147,12 @@ def initialize_session_state():
     
     if 'current_url' not in st.session_state:
         st.session_state.current_url = ""
+
+    if 'report_code' not in st.session_state:
+        st.session_state.report_code = ""
+
+    if 'fight_id' not in st.session_state:
+        st.session_state.fight_id = ""
     
     if 'current_player' not in st.session_state:
         st.session_state.current_player = None
@@ -169,6 +175,9 @@ def perform_analysis(client, ability_data_manager, url, selected_player, source_
         dict: Analysis results containing dataframes and timestamp
     """
     uploaded_report_code, uploaded_fight_id, _ = extract_report_info(url)
+    if uploaded_fight_id == "last":
+        from warcraftlogs.query.reports import get_last_fight_id
+        uploaded_fight_id = get_last_fight_id(client, report_code=uploaded_report_code)
     
     # Get player details and fight info
     player = get_player_details(client, report_code=uploaded_report_code, fight_id=uploaded_fight_id, source_id=source_id)

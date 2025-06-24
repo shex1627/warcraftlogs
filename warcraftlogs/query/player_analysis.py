@@ -2,7 +2,7 @@ from typing import Optional, Tuple, List, Dict
 from dataclasses import dataclass
 import pandas as pd
 
-from warcraftlogs.gear.get_item_level import get_item_level_bracket
+from warcraftlogs.gear.get_item_level import get_item_level_bracket, get_item_level_bracket_from_raid
 
 @dataclass
 class PlayerDetails:
@@ -77,7 +77,7 @@ def get_player_details(client, report_code: str, fight_id: int, source_id: int=N
                     spec_name=player['specs'][0]['spec'],
                     class_name=player['type'],
                     item_level=player['minItemLevel'],
-                    bracket=get_item_level_bracket(player['minItemLevel'])
+                    bracket=get_item_level_bracket_from_raid(player['minItemLevel'])
                 )
     return None
 
@@ -133,7 +133,6 @@ def get_similar_players(client, encounter_id: int, spec_id: int, bracket: int,
     """
     
     response = client.query_public_api(query)
-    return response
     reports = response['data']['reportData']['reports']['data']
     
     similar_players = []

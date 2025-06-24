@@ -329,3 +329,112 @@ def get_player_dps_and_ilvl(report_code: str, fight_id: int, query_graphql_func)
     }
     
     return fight_info
+
+def categorize_players_by_role(player_list):
+    """
+    Categorizes WoW players into tank, dps, and healer roles based on their class and specialization.
+    
+    Args:
+        player_list (list): List of dictionaries containing player data with 'class_spec' key
+    
+    Returns:
+        dict: Dictionary with 'tank', 'dps', and 'heals' keys containing lists of players
+    """
+    
+    # Define role mappings based on class and specialization
+    tank_specs = {
+        'DeathKnight Blood',
+        'DemonHunter Vengeance', 
+        'Druid Guardian',
+        'Monk Brewmaster',
+        'Paladin Protection',
+        'Warrior Protection'
+    }
+    
+    healer_specs = {
+        'Druid Restoration',
+        'Evoker Preservation',
+        'Monk Mistweaver',
+        'Paladin Holy',
+        'Priest Discipline',
+        'Priest Holy',
+        'Shaman Restoration'
+    }
+    
+    dps_specs = {
+        'Evoker Augmentation',  # Support spec that's often grouped with healers
+        # Death Knight DPS
+        'DeathKnight Frost',
+        'DeathKnight Unholy',
+        
+        # Demon Hunter DPS
+        'Demon Hunter Havoc',
+        
+        # Druid DPS
+        'Druid Balance',
+        'Druid Feral',
+        
+        # Evoker DPS
+        'Evoker Devastation',
+        
+        # Hunter DPS
+        'Hunter Beast Mastery',
+        'Hunter Marksmanship',
+        'Hunter Survival',
+        
+        # Mage DPS
+        'Mage Arcane',
+        'Mage Fire',
+        'Mage Frost',
+        
+        # Monk DPS
+        'Monk Windwalker',
+        
+        # Paladin DPS
+        'Paladin Retribution',
+        
+        # Priest DPS
+        'Priest Shadow',
+        
+        # Rogue DPS
+        'Rogue Assassination',
+        'Rogue Outlaw',
+        'Rogue Subtlety',
+        
+        # Shaman DPS
+        'Shaman Elemental',
+        'Shaman Enhancement',
+        
+        # Warlock DPS
+        'Warlock Affliction',
+        'Warlock Demonology',
+        'Warlock Destruction',
+        
+        # Warrior DPS
+        'Warrior Arms',
+        'Warrior Fury'
+    }
+    
+    # Initialize result dictionary
+    roles = {
+        'tank': [],
+        'dps': [],
+        'heals': []
+    }
+    
+    # Categorize each player
+    for player in player_list:
+        class_spec = player.get('class_spec', '')
+        
+        if class_spec in tank_specs:
+            roles['tank'].append(player)
+        elif class_spec in healer_specs:
+            roles['heals'].append(player)
+        elif class_spec in dps_specs:
+            roles['dps'].append(player)
+        else:
+            # Handle unknown specs - you might want to log this or handle differently
+            print(f"Warning: Unknown spec '{class_spec}' for player {player.get('name', 'Unknown')}")
+            roles['dps'].append(player)  # Default to DPS for unknown specs
+    
+    return roles
