@@ -255,6 +255,25 @@ def get_mythic_plus_runs(client, dungeon_name, keystone_level, page=1, include_d
         "The Rookery": 12648,
         "Theater of Pain": 62293
     }
+    """Ara-Kara, City of Echoes - 62660
+Eco-Dome Al'dani - 12830
+Halls of Atonement - 62287
+Operation: Floodgate - 62773
+Priory of the Sacred Flame - 62649
+Tazavesh: So'leah's Gambit - 112442
+Tazavesh: Streets of Wonder - 112441
+The Dawnbreaker - 62662
+"""
+    dungeon_encounters = {
+        "Ara-Kara, City of Echoes": 62660,
+        "Eco-Dome Al'dani": 12830,
+        "Halls of Atonement": 62287,
+        "Operation: Floodgate": 62773,
+        "Priory of the Sacred Flame": 62649,
+        "Tazavesh: So'leah's Gambit": 112442,
+        "Tazavesh: Streets of Wonder": 112441,
+        "The Dawnbreaker": 62662,
+    }
     
     encounter_id = dungeon_encounters.get(dungeon_name)
     if not encounter_id:

@@ -7,19 +7,24 @@ from warcraftlogs.constants import TOKEN_DIR
 from warcraftlogs import WarcraftLogsClient
 
 def get_item_level_bracket_from_raid(item_level: float) -> int:
-    """Convert item level to bracket number (1-17)"""
+    """Convert item level to bracket number (1-20)"""
     bracket_ranges = [
-        (633, 635), (636, 638), (639, 641), (642, 644),
-        (645, 647), (648, 650), (651, 653), (654, 656),
-        (657, 659), (660, 662), (663, 665), (666, 668),
-        (669, 671), (672, 674), (675, 677), (678, 680),
-        (681, 683), (684, 686), (687, 689), (690, 692),
+        (679, 681), (682, 684), (685, 687), (688, 690),
+        (691, 693), (694, 696), (697, 699), (700, 702),
+        (703, 705), (706, 708), (709, 711), (712, 714),
+        (715, 717), (718, 720), (721, 723), (724, 726),
+        (727, 729), (730, 732)
     ]
     
     for i, (min_ilvl, max_ilvl) in enumerate(bracket_ranges, 1):
         if min_ilvl <= item_level <= max_ilvl:
             return i
-    return 17 if item_level > 680 else 1
+    
+    # Handle edge cases
+    if item_level < 679:
+        return 1  # Below range, assign to first bracket
+    else:
+        return len(bracket_ranges)  # Above range, assign to last bracket
 
 # def get_item_level_bracket(item_level):
 #     """
@@ -53,19 +58,19 @@ def get_item_level_bracket_from_raid(item_level: float) -> int:
 #         return 10
     
 def get_item_level_bracket(item_level: float) -> int:
-    """Convert item level to bracket number (1-17)"""
+    """Convert item level to bracket number (1-18)"""
     bracket_ranges = [
-        (633, 635), (636, 638), (639, 641), (642, 644),
-        (645, 647), (648, 650), (651, 653), (654, 656),
-        (657, 659), (660, 662), (663, 665), (666, 668),
-        (669, 671), (672, 674), (675, 677), (678, 680),
-        (681, 683), (684, 686), (687, 689), (690, 692),
+        (679, 681), (682, 684), (685, 687), (688, 690),
+        (691, 693), (694, 696), (697, 699), (700, 702),
+        (703, 705), (706, 708), (709, 711), (712, 714),
+        (715, 717), (718, 720), (721, 723), (724, 726),
+        (727, 729), (730, 732)
     ]
     
     for i, (min_ilvl, max_ilvl) in enumerate(bracket_ranges, 1):
         if min_ilvl <= item_level <= max_ilvl:
             return i
-    return 17 if item_level > 680 else 1
+    return 18 if item_level > 732 else 1
     
 def get_char_average_item_level(
     character_name: str, 

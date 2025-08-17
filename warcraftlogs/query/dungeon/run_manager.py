@@ -386,16 +386,15 @@ class MythicPlusRunManager:
 
     def _get_dungeon_from_encounter(self, encounter_id: str) -> str:
         """Map encounter ID to dungeon name (helper method)."""
-        # You might want to store this mapping or infer it from the data
         encounter_to_dungeon = {
-            '12661': 'Cinderbrew Meadery',
-            '12651': 'Darkflame Cleft', 
-            '12773': 'Operation: Floodgate',
-            '112098': 'Operation: Mechagon - Workshop',
-            '12649': 'Priory of the Sacred Flame',
-            '61594': 'The MOTHERLODE!!',
-            '12648': 'The Rookery',
-            '62293': 'Theater of Pain'
+            '62660': 'Ara-Kara, City of Echoes',
+            '12830': 'Eco-Dome Al\'dani',
+            '62287': 'Halls of Atonement',
+            '62773': 'Operation: Floodgate',
+            '62649': 'Priory of the Sacred Flame',
+            '112442': 'Tazavesh: So\'leah\'s Gambit',
+            '112441': 'Tazavesh: Streets of Wonder',
+            '62662': 'The Dawnbreaker'
         }
         return encounter_to_dungeon.get(str(encounter_id), '')
     
